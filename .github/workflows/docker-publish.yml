@@ -43,7 +43,7 @@ jobs:
         run: |
           # Wir nutzen jetzt 'gradle' direkt statt './gradlew'
           # Das funktioniert immer, auch wenn der Wrapper im Repo fehlt
-          VERSION=$(gradle properties -q | grep "version:" | awk '{print $2}')
+          VERSION=$(gradle properties -q | grep "pluginVersion:" | awk '{print $2}')
           echo "Gefundene Version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
