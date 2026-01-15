@@ -1,3 +1,7 @@
+# WIP!
+
+I created this for my minecraft server network, i still need to change some files to change it to hytale
+
 # Documentation WIP
 
 ## Hytale Server Network Docker
@@ -28,3 +32,7 @@ This folder can contain differen jar files like the HytaleServer.jar, it will be
 
 This folder contains sub folders for every hytale server, the content will be copied to the mod folder in the hytale server folder.
 The mods in the mods/common folder will be copied to every server
+
+## Contribution
+
+Feel free to create Pull-Requests
