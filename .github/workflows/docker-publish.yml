@@ -5,8 +5,6 @@ on:
     - cron: '25 19 * * *'
   push:
     branches: [ "main" ]
-    # We remove the tags trigger here to avoid double-triggering
-    # since this workflow will create the tags itself.
   pull_request:
     branches: [ "main" ]
 
@@ -18,7 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # CHANGED: Required to push the new git tag
+      contents: write # WICHTIG: Erlaubt das Erstellen von Releases/Tags
       packages: write
       id-token: write
 
@@ -26,7 +24,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required for the tagging action to see history
+          fetch-depth: 0 # Wichtig für die Changelog-Generierung
+
+      # 1. Java einrichten (für Gradle notwendig)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 2. Version aus Gradle auslesen
+      - name: Extract Version from Gradle
+        id: gradle_version
+        run: |
+          chmod +x gradlew
+          # Liest die 'version' Property aus Gradle (funktioniert mit build.gradle und gradle.properties)
+          VERSION=$(./gradlew properties -q | grep "version:" | awk '{print $2}')
+          echo "Gefundene Version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Install cosign
         if: github.event_name != 'pull_request'
@@ -45,22 +60,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # NEW STEP: Calculate and Push Version Tag
-      - name: Bump version and push tag
-        id: tag_version
-        if: github.event_name != 'pull_request'
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
+      # 3. Docker Metadata mit Gradle Version vorbereiten
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # UPDATED: Use the calculated tag from the previous step
           tags: |
-            type=raw,value=${{ steps.tag_version.outputs.new_tag }}
+            # Nutzt die Version aus Schritt 2 (z.B. v1.0.2)
+            type=raw,value=v${{ steps.gradle_version.outputs.version }}
+            # Latest Tag nur auf Main Branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=pr
 
@@ -74,6 +83,22 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 4. GitHub Release erstellen (Tag + Auto-Changelog)
+      # Dies wird nur ausgeführt, wenn es kein PR ist
+      - name: Create Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v1
+        with:
+          # Tag Name basierend auf Gradle Version
+          tag_name: v${{ steps.gradle_version.outputs.version }}
+          name: Release v${{ steps.gradle_version.outputs.version }}
+          # HIER passiert die Magie: GitHub generiert automatisch die "What's Changed" Liste
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign the published Docker image
         if: ${{ github.event_name != 'pull_request' }}
