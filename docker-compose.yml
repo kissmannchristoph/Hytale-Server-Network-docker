@@ -1,0 +1,154 @@
+version: "3.8"
+
+services:
+  # --- PROXY ---
+  proxy:
+    build: .
+    container_name: mc-proxy
+    restart: unless-stopped
+    ports:
+      - "25565:25565"
+      - "19132:19132/udp"
+    networks:
+      - mc-network
+    environment:
+      MEMORY: "1G"
+      JAR_FILE: "velocity.jar"
+      PLUGIN_FOLDER: "proxy"
+    volumes:
+      - ./data/proxy:/data              # Dein Home-Ordner für den Proxy
+      - ./jars:/jars:ro            # Vorlagen-Ordner (nur lesen)
+      - ./configs:/configs:ro
+      - ./secrets:/secrets:ro
+      - ./plugins/proxy:/plugins/proxy:ro
+  # --- SERVER 1 ---
+  lobby:
+    build: .
+    container_name: mc-server_lobby
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    networks:
+      - mc-network
+    depends_on:
+      proxy:
+        condition: service_started
+      database:
+        condition: service_healthy
+    environment:
+      MEMORY: "15G"
+      JAR_FILE: "paper.jar"
+      PLUGIN_FOLDER: "lobby"
+            # Database Config
+      DB_HOST: mysql_db
+      DB_PORT: 3306
+      DB_NAME: minecraft_db
+      DB_USER: mc_user
+      DB_PASS: mc_password
+    volumes:
+      - ./data/lobby:/data            # Dein Home-Ordner für Server 1 (Welten, etc.)
+      - ./jars:/jars:ro            # Vorlagen-Ordner
+      - ./configs:/configs:ro
+      # Plugins
+      - ./plugins/common:/plugins/common:rotyy
+      - ./plugins/lobby:/plugins/lobby:ro
+
+  # --- SERVER 2 ---
+  test:
+    build: .
+    container_name: mc-server_test
+    restart: unless-stopped
+    networks:
+      - mc-network
+    depends_on:
+      proxy:
+        condition: service_started
+      database:
+        condition: service_healthy
+    environment:
+      MEMORY: "2G"
+      JAR_FILE: "paper.jar"
+      PLUGIN_FOLDER: "test"
+            # Database Config
+      DB_HOST: mysql_db
+      DB_PORT: 3306
+      DB_NAME: minecraft_db
+      DB_USER: mc_user
+      DB_PASS: mc_password
+    volumes:
+      - ./data/test:/data            # Dein Home-Ordner für Server 2
+      - ./jars:/jars:ro
+      - ./configs:/configs:ro
+      - ./plugins/common:/plugins/common:ro
+      - ./plugins/test:/plugins/test:ro
+  # --- SERVER 3 ---
+  mmo:
+    build: .
+    container_name: mc-server_mmo
+    restart: unless-stopped
+    networks:
+      mc-network:
+        aliases:
+          - mmo
+    depends_on:
+      proxy:
+        condition: service_started
+      database:
+        condition: service_healthy
+    environment:
+      RCON_HOST: localhost
+      RCON_PORT: 25575
+      RCON_PASSWORD: mysecretpassword
+      MEMORY: "2G"
+      JAR_FILE: "paper.jar"
+      PLUGIN_FOLDER: "mmo"
+      # Database Config
+      DB_HOST: mysql_db
+      DB_PORT: 3306
+      DB_NAME: minecraft_db
+      DB_USER: mc_user
+      DB_PASS: mc_password
+    volumes:
+      - ./data/mmo:/data            # Dein Home-Ordner für Server 2
+      - ./jars:/jars:ro
+      - ./configs:/configs:ro
+      - ./plugins/common:/plugins/common:ro
+      - ./plugins/mmo:/plugins/mmo:ro
+
+  database:
+    image: mysql:8.0
+    container_name: mc-database
+    restart: unless-stopped
+    networks:
+      mc-network:
+        aliases:
+          - mysql_db  # <--- This is the Hostname plugins will use
+    environment:
+      MYSQL_ROOT_PASSWORD: root_super_secret
+      MYSQL_DATABASE: minecraft_db
+      MYSQL_USER: mc_user
+      MYSQL_PASSWORD: mc_password
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+  # --- PHP MY ADMIN (NEW) ---
+  phpmyadmin:
+    image: phpmyadmin
+    container_name: mc-phpmyadmin
+    restart: always
+    depends_on:
+      database:
+        condition: service_healthy  # <--- WARTET JETZT AUF MYSQL
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql_db
+      PMA_PORT: 3306
+    networks:
+      - mc-network    
+networks:
+  mc-network:
+    driver: bridge
